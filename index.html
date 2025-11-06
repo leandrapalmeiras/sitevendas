@@ -1,61 +1,296 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerenciador CRUD</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div id="app" class="container">
-        <header>
-            <h1>Gerenciador CRUD Simples</h1>
-            <p>Crie, Leia, Atualize e Exclua itens (FireStore)</p>
-            <div id="user-info">
-                <span id="user-id">Carregando usuário...</span>
-            </div>
-        </header>
+// Importações necessárias do Firebase
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+import { getFirestore, doc, collection, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        <main class="content-wrapper">
-            <section class="card form-section">
-                <h2>Incluir Novo Item</h2>
-                <form id="create-form">
-                    <input type="text" id="item-name" placeholder="Nome do Item" required>
-                    <button type="submit" id="add-button">
-                        <span id="add-button-text">Incluir Item</span>
-                    </button>
-                </form>
-            </section>
+// ⚠️ PASSO 1: Configure seu Firebase aqui!
+// Substitua este objeto com as configurações do SEU projeto Firebase.
+const firebaseConfig = {
+    apiKey: "SUA_API_KEY_AQUI", // Ex: "AIzaSy..."
+    authDomain: "SEU_DOMINIO.firebaseapp.com",
+    projectId: "SEU-PROJECT-ID",
+    storageBucket: "SEU-BUCKET.appspot.com",
+    messagingSenderId: "SEU_SENDER_ID",
+    appId: "SEU_APP_ID"
+};
 
-            <section class="card list-section">
-                <h2>Itens Atuais (Consulta em Tempo Real)</h2>
-                <div id="items-list" class="list-container">
-                    <p id="no-items" class="empty-message">Nenhum item adicionado ainda.</p>
-                </div>
-                <div id="error-message" class="error-message hidden"></div>
-            </section>
-        </main>
-        
-        <div id="edit-modal" class="modal hidden">
-            <div class="modal-content">
-                <h3>Alterar Item</h3>
-                <input type="hidden" id="edit-item-id">
-                <input type="text" id="edit-item-name" placeholder="Novo Nome do Item" required>
-                <div class="modal-actions">
-                    <button id="close-modal-button" type="button" class="cancel-button">Cancelar</button>
-                    <button id="save-edit-button" type="button" class="primary-button">Salvar Alterações</button>
-                </div>
-            </div>
-        </div>
-        
-        <div id="loading-indicator" class="loading-indicator hidden">
-            <div id="progress-bar" class="progress-bar"></div>
-        </div>
-    </div>
+// Variáveis Globais
+let db, auth, userId = null;
+const APP_ID_FOR_STORAGE = 'crud-site-exemplo'; // ID para isolar seus dados
+
+// --- Funções de Utilidade (Loading/Error) ---
+
+/** Exibe a barra de progresso. */
+function startLoading() {
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const progressBar = document.getElementById('progress-bar');
+    if (loadingIndicator) {
+        loadingIndicator.classList.remove('hidden');
+        // Simula progresso
+        progressBar.style.width = '20%';
+        setTimeout(() => progressBar.style.width = '70%', 100);
+    }
+}
+
+/** Oculta a barra de progresso. */
+function stopLoading() {
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const progressBar = document.getElementById('progress-bar');
+    if (loadingIndicator) {
+        progressBar.style.width = '100%';
+        setTimeout(() => {
+            loadingIndicator.classList.add('hidden');
+            progressBar.style.width = '0%'; // Reset
+        }, 300);
+    }
+}
+
+/** Exibe mensagem de erro */
+function showError(message) {
+    const errorDiv = document.getElementById('error-message');
+    if (errorDiv) {
+        errorDiv.textContent = `ERRO: ${message}`;
+        errorDiv.classList.remove('hidden');
+    }
+    console.error(message);
+}
+
+/** Oculta mensagem de erro */
+function hideError() {
+    const errorDiv = document.getElementById('error-message');
+    if (errorDiv) {
+        errorDiv.classList.add('hidden');
+        errorDiv.textContent = '';
+    }
+}
+
+// --- Inicialização e Autenticação ---
+
+async function initializeFirebase() {
+    startLoading();
     
-    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
-    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
-    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
-    <script type="module" src="script.js"></script>
-</body>
-</html>
+    try {
+        const app = initializeApp(firebaseConfig);
+        db = getFirestore(app);
+        auth = getAuth(app);
+
+        // Tentativa de login anônimo (cria um usuário único para persistência de dados)
+        await signInAnonymously(auth);
+
+        // Listener de autenticação
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userId = user.uid;
+                // Exibe o ID do usuário (importante para depuração e separação de dados)
+                document.getElementById('user-id').textContent = `ID do Usuário: ${userId.substring(0, 10)}...`;
+                
+                // Inicia o listener de itens somente após a autenticação
+                setupRealtimeListener();
+            } else {
+                showError("Falha na autenticação do usuário.");
+            }
+            stopLoading();
+        });
+    } catch (error) {
+        stopLoading();
+        showError(`Erro ao inicializar Firebase. Verifique sua configuração em script.js: ${error.message}`);
+    }
+}
+
+// --- Referências do Firestore ---
+
+/** Retorna a referência à coleção de itens, isolada por usuário. */
+function getItemsCollectionRef() {
+    if (!db || !userId) {
+        throw new Error("Firestore ou userId indisponível.");
+    }
+    // Cria um caminho único para cada usuário: /APP_ID_FOR_STORAGE/{userId}/crud_items
+    const path = `${APP_ID_FOR_STORAGE}/users/${userId}/crud_items`;
+    return collection(db, path);
+}
+
+/** Retorna a referência a um documento específico. */
+function getItemDocRef(id) {
+    if (!db || !userId) {
+        throw new Error("Firestore ou userId indisponível.");
+    }
+    const path = `${APP_ID_FOR_STORAGE}/users/${userId}/crud_items/${id}`;
+    return doc(db, path);
+}
+
+// --- Operações CRUD ---
+
+/** 1. INCLUIR (CREATE): Adiciona um novo item ao Firestore */
+async function addItem(name) {
+    if (!userId) return showError("Usuário não autenticado.");
+    
+    startLoading();
+    hideError();
+
+    const button = document.getElementById('add-button');
+    const buttonText = document.getElementById('add-button-text');
+    button.disabled = true;
+    buttonText.textContent = "Incluindo...";
+
+    try {
+        const ref = getItemsCollectionRef();
+        await addDoc(ref, {
+            name: name,
+            createdAt: serverTimestamp() // Garante que a data seja definida pelo servidor
+        });
+        document.getElementById('item-name').value = ''; // Limpa o input
+    } catch (error) {
+        showError(`Erro ao adicionar item: ${error.message}`);
+    } finally {
+        stopLoading();
+        button.disabled = false;
+        buttonText.textContent = "Incluir Item";
+    }
+}
+
+/** 4. EXCLUIR (DELETE): Exclui um item pelo ID */
+async function deleteItem(id) {
+    if (!userId) return showError("Usuário não autenticado.");
+    
+    // Confirmação simples
+    if (!confirm("Tem certeza que deseja excluir este item?")) return;
+
+    startLoading();
+    hideError();
+    try {
+        const docRef = getItemDocRef(id);
+        await deleteDoc(docRef);
+    } catch (error) {
+        showError(`Erro ao excluir item: ${error.message}`);
+    } finally {
+        stopLoading();
+    }
+}
+
+/** 3. ALTERAR (UPDATE - Ação 1): Abre o modal de edição */
+function openEditModal(id, name) {
+    const modal = document.getElementById('edit-modal');
+    document.getElementById('edit-item-id').value = id;
+    document.getElementById('edit-item-name').value = name;
+    modal.classList.remove('hidden');
+}
+
+/** 3. ALTERAR (UPDATE - Ação 2): Salva as alterações de edição no Firestore */
+async function saveEdit() {
+    if (!userId) return showError("Usuário não autenticado.");
+
+    const id = document.getElementById('edit-item-id').value;
+    const newName = document.getElementById('edit-item-name').value.trim();
+    
+    if (!newName) {
+        showError("O nome do item não pode estar vazio.");
+        return;
+    }
+
+    startLoading();
+    hideError();
+    try {
+        const docRef = getItemDocRef(id);
+        await updateDoc(docRef, {
+            name: newName
+        });
+        closeEditModal();
+    } catch (error) {
+        showError(`Erro ao atualizar item: ${error.message}`);
+    } finally {
+        stopLoading();
+    }
+}
+
+/** Fecha o modal de edição */
+function closeEditModal() {
+    document.getElementById('edit-modal').classList.add('hidden');
+    hideError(); // Limpa erros do modal
+}
+
+// --- Renderização da UI (CONSULTAR) ---
+
+/** Cria o elemento HTML para um único item */
+function createItemElement(doc) {
+    const id = doc.id;
+    const data = doc.data();
+    const name = data.name;
+    const timestamp = data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleString('pt-BR') : 'Ainda sem data';
+
+    const itemDiv = document.createElement('div');
+    itemDiv.id = `item-${id}`;
+    itemDiv.className = 'item-row';
+    
+    const contentHTML = `
+        <div class="item-details">
+            <p>${name}</p>
+            <div class="meta">ID: ${id.substring(0, 8)}... | Criado em: ${timestamp}</div>
+        </div>
+        <div class="item-actions">
+            <button class="edit-button" data-id="${id}" data-name="${name}">Alterar</button>
+            <button class="delete-button" data-id="${id}">Excluir</button>
+        </div>
+    `;
+    itemDiv.innerHTML = contentHTML;
+
+    // Adiciona Listeners aos botões do item
+    itemDiv.querySelector('.edit-button').addEventListener('click', (e) => {
+        openEditModal(e.target.dataset.id, e.target.dataset.name);
+    });
+    itemDiv.querySelector('.delete-button').addEventListener('click', (e) => {
+        deleteItem(e.target.dataset.id);
+    });
+
+    return itemDiv;
+}
+
+/** 2. CONSULTAR (READ): Configura o listener em tempo real para o Firestore */
+function setupRealtimeListener() {
+    if (!db || !userId) return;
+
+    const itemsList = document.getElementById('items-list');
+    const noItemsMessage = document.getElementById('no-items');
+    const ref = getItemsCollectionRef();
+    
+    // Consulta: Ordena por data de criação (mais novo primeiro)
+    const q = query(ref, orderBy('createdAt', 'desc')); 
+
+    // Observa mudanças em tempo real (onSnapshot)
+    onSnapshot(q, (snapshot) => {
+        itemsList.innerHTML = ''; // Limpa a lista
+        const itemsCount = snapshot.size;
+
+        if (itemsCount === 0) {
+            noItemsMessage.classList.remove('hidden');
+        } else {
+            noItemsMessage.classList.add('hidden');
+            snapshot.forEach(doc => {
+                itemsList.appendChild(createItemElement(doc));
+            });
+        }
+    }, (error) => {
+        showError(`Erro ao carregar dados em tempo real: ${error.message}`);
+    });
+}
+
+// --- Inicialização e Listeners de Evento ---
+
+window.onload = () => {
+    initializeFirebase();
+
+    // Listener para o formulário de inclusão (CREATE)
+    document.getElementById('create-form').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = document.getElementById('item-name');
+        const name = input.value.trim();
+        if (name) {
+            addItem(name);
+        } else {
+            showError("O nome do item é obrigatório.");
+        }
+    });
+
+    // Listeners do Modal (UPDATE)
+    document.getElementById('close-modal-button').addEventListener('click', closeEditModal);
+    document.getElementById('save-edit-button').addEventListener('click', saveEdit);
+};

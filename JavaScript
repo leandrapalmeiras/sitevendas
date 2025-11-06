@@ -1,0 +1,17 @@
+// Este script pode ser usado para adicionar interatividade que não precisa de servidor.
+
+document.addEventListener('DOMContentLoaded', (event) => {
+    console.log('Queijaria Artesanal: Site carregado com sucesso!');
+
+    // Exemplo de interatividade: Alerta ao clicar no rodapé
+    const footer = document.querySelector('footer');
+    footer.addEventListener('click', () => {
+        // alert('Obrigado por visitar nossa Queijaria! Faça seu pedido agora.');
+        // O alerta está comentado. Se quiser ativá-lo, remova as duas barras (//).
+    });
+
+    // Você pode usar este arquivo futuramente para:
+    // 1. Validar formulários de contato (se houver).
+    // 2. Animar elementos da página.
+    // 3. Adicionar um botão "Voltar ao topo".
+});
