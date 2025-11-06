@@ -1,296 +1,134 @@
-// Importações necessárias do Firebase
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, collection, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRUD Simulado</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
 
-// ⚠️ PASSO 1: Configure seu Firebase aqui!
-// Substitua este objeto com as configurações do SEU projeto Firebase.
-const firebaseConfig = {
-    apiKey: "SUA_API_KEY_AQUI", // Ex: "AIzaSy..."
-    authDomain: "SEU_DOMINIO.firebaseapp.com",
-    projectId: "SEU-PROJECT-ID",
-    storageBucket: "SEU-BUCKET.appspot.com",
-    messagingSenderId: "SEU_SENDER_ID",
-    appId: "SEU_APP_ID"
-};
+    <div class="container">
+        <h1>Gerenciamento de Usuários (CRUD Simulado)</h1>
 
-// Variáveis Globais
-let db, auth, userId = null;
-const APP_ID_FOR_STORAGE = 'crud-site-exemplo'; // ID para isolar seus dados
+        <div class="form-container">
+            <h2>Adicionar/Atualizar Usuário</h2>
+            <input type="hidden" id="userId">
+            <input type="text" id="userName" placeholder="Nome do Usuário" required>
+            <input type="email" id="userEmail" placeholder="Email do Usuário" required>
+            <button id="saveButton" onclick="salvarUsuario()">Adicionar</button>
+        </div>
 
-// --- Funções de Utilidade (Loading/Error) ---
+        <div class="table-container">
+            <h2>Lista de Usuários</h2>
+            <table id="userTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nome</th>
+                        <th>Email</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+        </div>
+    </div>
 
-/** Exibe a barra de progresso. */
-function startLoading() {
-    const loadingIndicator = document.getElementById('loading-indicator');
-    const progressBar = document.getElementById('progress-bar');
-    if (loadingIndicator) {
-        loadingIndicator.classList.remove('hidden');
-        // Simula progresso
-        progressBar.style.width = '20%';
-        setTimeout(() => progressBar.style.width = '70%', 100);
-    }
-}
+    <script>
+        // --- Estrutura de Dados (Simulação de um Banco de Dados) ---
+        let users = [];
+        let nextId = 1;
 
-/** Oculta a barra de progresso. */
-function stopLoading() {
-    const loadingIndicator = document.getElementById('loading-indicator');
-    const progressBar = document.getElementById('progress-bar');
-    if (loadingIndicator) {
-        progressBar.style.width = '100%';
-        setTimeout(() => {
-            loadingIndicator.classList.add('hidden');
-            progressBar.style.width = '0%'; // Reset
-        }, 300);
-    }
-}
+        // --- Funções CRUD ---
 
-/** Exibe mensagem de erro */
-function showError(message) {
-    const errorDiv = document.getElementById('error-message');
-    if (errorDiv) {
-        errorDiv.textContent = `ERRO: ${message}`;
-        errorDiv.classList.remove('hidden');
-    }
-    console.error(message);
-}
+        // CREATE (INSERT) / UPDATE
+        function salvarUsuario() {
+            const id = document.getElementById('userId').value;
+            const name = document.getElementById('userName').value.trim();
+            const email = document.getElementById('userEmail').value.trim();
+            const saveButton = document.getElementById('saveButton');
 
-/** Oculta mensagem de erro */
-function hideError() {
-    const errorDiv = document.getElementById('error-message');
-    if (errorDiv) {
-        errorDiv.classList.add('hidden');
-        errorDiv.textContent = '';
-    }
-}
-
-// --- Inicialização e Autenticação ---
-
-async function initializeFirebase() {
-    startLoading();
-    
-    try {
-        const app = initializeApp(firebaseConfig);
-        db = getFirestore(app);
-        auth = getAuth(app);
-
-        // Tentativa de login anônimo (cria um usuário único para persistência de dados)
-        await signInAnonymously(auth);
-
-        // Listener de autenticação
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                userId = user.uid;
-                // Exibe o ID do usuário (importante para depuração e separação de dados)
-                document.getElementById('user-id').textContent = `ID do Usuário: ${userId.substring(0, 10)}...`;
-                
-                // Inicia o listener de itens somente após a autenticação
-                setupRealtimeListener();
-            } else {
-                showError("Falha na autenticação do usuário.");
+            if (!name || !email) {
+                alert('Por favor, preencha todos os campos.');
+                return;
             }
-            stopLoading();
-        });
-    } catch (error) {
-        stopLoading();
-        showError(`Erro ao inicializar Firebase. Verifique sua configuração em script.js: ${error.message}`);
-    }
-}
 
-// --- Referências do Firestore ---
+            if (id) {
+                // UPDATE
+                const index = users.findIndex(user => user.id === parseInt(id));
+                if (index !== -1) {
+                    users[index] = { id: parseInt(id), name, email };
+                    alert(`Usuário com ID ${id} atualizado com sucesso!`);
+                }
+                document.getElementById('userId').value = '';
+                saveButton.textContent = 'Adicionar';
+            } else {
+                // CREATE (INSERT)
+                const newUser = { id: nextId++, name, email };
+                users.push(newUser);
+                alert('Usuário adicionado com sucesso!');
+            }
 
-/** Retorna a referência à coleção de itens, isolada por usuário. */
-function getItemsCollectionRef() {
-    if (!db || !userId) {
-        throw new Error("Firestore ou userId indisponível.");
-    }
-    // Cria um caminho único para cada usuário: /APP_ID_FOR_STORAGE/{userId}/crud_items
-    const path = `${APP_ID_FOR_STORAGE}/users/${userId}/crud_items`;
-    return collection(db, path);
-}
+            // Limpa o formulário e atualiza a tabela
+            document.getElementById('userName').value = '';
+            document.getElementById('userEmail').value = '';
+            renderTable();
+        }
 
-/** Retorna a referência a um documento específico. */
-function getItemDocRef(id) {
-    if (!db || !userId) {
-        throw new Error("Firestore ou userId indisponível.");
-    }
-    const path = `${APP_ID_FOR_STORAGE}/users/${userId}/crud_items/${id}`;
-    return doc(db, path);
-}
+        // READ (SELECT)
+        function renderTable() {
+            const tableBody = document.querySelector('#userTable tbody');
+            tableBody.innerHTML = ''; // Limpa a tabela
 
-// --- Operações CRUD ---
+            users.forEach(user => {
+                const row = tableBody.insertRow();
+                row.insertCell().textContent = user.id;
+                row.insertCell().textContent = user.name;
+                row.insertCell().textContent = user.email;
 
-/** 1. INCLUIR (CREATE): Adiciona um novo item ao Firestore */
-async function addItem(name) {
-    if (!userId) return showError("Usuário não autenticado.");
-    
-    startLoading();
-    hideError();
+                const actionsCell = row.insertCell();
 
-    const button = document.getElementById('add-button');
-    const buttonText = document.getElementById('add-button-text');
-    button.disabled = true;
-    buttonText.textContent = "Incluindo...";
+                // Botão para carregar dados no formulário (UPDATE)
+                const editButton = document.createElement('button');
+                editButton.textContent = 'Editar';
+                editButton.classList.add('edit-btn');
+                editButton.onclick = () => carregarParaEdicao(user.id);
+                actionsCell.appendChild(editButton);
 
-    try {
-        const ref = getItemsCollectionRef();
-        await addDoc(ref, {
-            name: name,
-            createdAt: serverTimestamp() // Garante que a data seja definida pelo servidor
-        });
-        document.getElementById('item-name').value = ''; // Limpa o input
-    } catch (error) {
-        showError(`Erro ao adicionar item: ${error.message}`);
-    } finally {
-        stopLoading();
-        button.disabled = false;
-        buttonText.textContent = "Incluir Item";
-    }
-}
-
-/** 4. EXCLUIR (DELETE): Exclui um item pelo ID */
-async function deleteItem(id) {
-    if (!userId) return showError("Usuário não autenticado.");
-    
-    // Confirmação simples
-    if (!confirm("Tem certeza que deseja excluir este item?")) return;
-
-    startLoading();
-    hideError();
-    try {
-        const docRef = getItemDocRef(id);
-        await deleteDoc(docRef);
-    } catch (error) {
-        showError(`Erro ao excluir item: ${error.message}`);
-    } finally {
-        stopLoading();
-    }
-}
-
-/** 3. ALTERAR (UPDATE - Ação 1): Abre o modal de edição */
-function openEditModal(id, name) {
-    const modal = document.getElementById('edit-modal');
-    document.getElementById('edit-item-id').value = id;
-    document.getElementById('edit-item-name').value = name;
-    modal.classList.remove('hidden');
-}
-
-/** 3. ALTERAR (UPDATE - Ação 2): Salva as alterações de edição no Firestore */
-async function saveEdit() {
-    if (!userId) return showError("Usuário não autenticado.");
-
-    const id = document.getElementById('edit-item-id').value;
-    const newName = document.getElementById('edit-item-name').value.trim();
-    
-    if (!newName) {
-        showError("O nome do item não pode estar vazio.");
-        return;
-    }
-
-    startLoading();
-    hideError();
-    try {
-        const docRef = getItemDocRef(id);
-        await updateDoc(docRef, {
-            name: newName
-        });
-        closeEditModal();
-    } catch (error) {
-        showError(`Erro ao atualizar item: ${error.message}`);
-    } finally {
-        stopLoading();
-    }
-}
-
-/** Fecha o modal de edição */
-function closeEditModal() {
-    document.getElementById('edit-modal').classList.add('hidden');
-    hideError(); // Limpa erros do modal
-}
-
-// --- Renderização da UI (CONSULTAR) ---
-
-/** Cria o elemento HTML para um único item */
-function createItemElement(doc) {
-    const id = doc.id;
-    const data = doc.data();
-    const name = data.name;
-    const timestamp = data.createdAt ? new Date(data.createdAt.seconds * 1000).toLocaleString('pt-BR') : 'Ainda sem data';
-
-    const itemDiv = document.createElement('div');
-    itemDiv.id = `item-${id}`;
-    itemDiv.className = 'item-row';
-    
-    const contentHTML = `
-        <div class="item-details">
-            <p>${name}</p>
-            <div class="meta">ID: ${id.substring(0, 8)}... | Criado em: ${timestamp}</div>
-        </div>
-        <div class="item-actions">
-            <button class="edit-button" data-id="${id}" data-name="${name}">Alterar</button>
-            <button class="delete-button" data-id="${id}">Excluir</button>
-        </div>
-    `;
-    itemDiv.innerHTML = contentHTML;
-
-    // Adiciona Listeners aos botões do item
-    itemDiv.querySelector('.edit-button').addEventListener('click', (e) => {
-        openEditModal(e.target.dataset.id, e.target.dataset.name);
-    });
-    itemDiv.querySelector('.delete-button').addEventListener('click', (e) => {
-        deleteItem(e.target.dataset.id);
-    });
-
-    return itemDiv;
-}
-
-/** 2. CONSULTAR (READ): Configura o listener em tempo real para o Firestore */
-function setupRealtimeListener() {
-    if (!db || !userId) return;
-
-    const itemsList = document.getElementById('items-list');
-    const noItemsMessage = document.getElementById('no-items');
-    const ref = getItemsCollectionRef();
-    
-    // Consulta: Ordena por data de criação (mais novo primeiro)
-    const q = query(ref, orderBy('createdAt', 'desc')); 
-
-    // Observa mudanças em tempo real (onSnapshot)
-    onSnapshot(q, (snapshot) => {
-        itemsList.innerHTML = ''; // Limpa a lista
-        const itemsCount = snapshot.size;
-
-        if (itemsCount === 0) {
-            noItemsMessage.classList.remove('hidden');
-        } else {
-            noItemsMessage.classList.add('hidden');
-            snapshot.forEach(doc => {
-                itemsList.appendChild(createItemElement(doc));
+                // Botão para DELETE
+                const deleteButton = document.createElement('button');
+                deleteButton.textContent = 'Deletar';
+                deleteButton.classList.add('delete-btn');
+                deleteButton.onclick = () => deletarUsuario(user.id);
+                actionsCell.appendChild(deleteButton);
             });
         }
-    }, (error) => {
-        showError(`Erro ao carregar dados em tempo real: ${error.message}`);
-    });
-}
 
-// --- Inicialização e Listeners de Evento ---
-
-window.onload = () => {
-    initializeFirebase();
-
-    // Listener para o formulário de inclusão (CREATE)
-    document.getElementById('create-form').addEventListener('submit', (e) => {
-        e.preventDefault();
-        const input = document.getElementById('item-name');
-        const name = input.value.trim();
-        if (name) {
-            addItem(name);
-        } else {
-            showError("O nome do item é obrigatório.");
+        // Função auxiliar para carregar dados no formulário para edição
+        function carregarParaEdicao(id) {
+            const user = users.find(user => user.id === id);
+            if (user) {
+                document.getElementById('userId').value = user.id;
+                document.getElementById('userName').value = user.name;
+                document.getElementById('userEmail').value = user.email;
+                document.getElementById('saveButton').textContent = 'Atualizar';
+            }
         }
-    });
 
-    // Listeners do Modal (UPDATE)
-    document.getElementById('close-modal-button').addEventListener('click', closeEditModal);
-    document.getElementById('save-edit-button').addEventListener('click', saveEdit);
-};
+        // DELETE
+        function deletarUsuario(id) {
+            if (confirm(`Tem certeza que deseja deletar o usuário com ID ${id}?`)) {
+                users = users.filter(user => user.id !== id);
+                alert('Usuário deletado com sucesso!');
+                renderTable(); // Atualiza a tabela
+            }
+        }
+
+        // Inicializa a tabela ao carregar a página
+        window.onload = renderTable;
+
+    </script>
+</body>
+</html>
