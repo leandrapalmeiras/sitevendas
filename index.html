@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciador CRUD</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app" class="container">
+        <header>
+            <h1>Gerenciador CRUD Simples</h1>
+            <p>Crie, Leia, Atualize e Exclua itens (FireStore)</p>
+            <div id="user-info">
+                <span id="user-id">Carregando usuário...</span>
+            </div>
+        </header>
+
+        <main class="content-wrapper">
+            <section class="card form-section">
+                <h2>Incluir Novo Item</h2>
+                <form id="create-form">
+                    <input type="text" id="item-name" placeholder="Nome do Item" required>
+                    <button type="submit" id="add-button">
+                        <span id="add-button-text">Incluir Item</span>
+                    </button>
+                </form>
+            </section>
+
+            <section class="card list-section">
+                <h2>Itens Atuais (Consulta em Tempo Real)</h2>
+                <div id="items-list" class="list-container">
+                    <p id="no-items" class="empty-message">Nenhum item adicionado ainda.</p>
+                </div>
+                <div id="error-message" class="error-message hidden"></div>
+            </section>
+        </main>
+        
+        <div id="edit-modal" class="modal hidden">
+            <div class="modal-content">
+                <h3>Alterar Item</h3>
+                <input type="hidden" id="edit-item-id">
+                <input type="text" id="edit-item-name" placeholder="Novo Nome do Item" required>
+                <div class="modal-actions">
+                    <button id="close-modal-button" type="button" class="cancel-button">Cancelar</button>
+                    <button id="save-edit-button" type="button" class="primary-button">Salvar Alterações</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="loading-indicator" class="loading-indicator hidden">
+            <div id="progress-bar" class="progress-bar"></div>
+        </div>
+    </div>
+    
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>
